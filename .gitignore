@@ -1,0 +1,9 @@
+*.exe
+*.ilk
+*.pdb
+*.obj
+*.gltf
+*.glb
+*.rdbg
+*.log
+*.bin
