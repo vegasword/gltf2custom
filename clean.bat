@@ -1,2 +1,2 @@
 @echo off
-del /F *.exe *.log *.ilk *.pdb *.obj > NUL
+del /F *.exe *.ilk *.pdb *.pch *.map *.obj > NUL
