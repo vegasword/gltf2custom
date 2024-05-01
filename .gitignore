@@ -1,10 +1,14 @@
+# Debug
 *.exe
 *.ilk
 *.pdb
+*.map
+*.pch
 *.obj
+*.rdbg
+
+# Resources
 *.gltf
 *.glb
-*.rdbg
-*.log
 *.bin
 *.png
