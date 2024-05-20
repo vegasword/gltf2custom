@@ -1,14 +1,21 @@
-void Log(const char *format, ...)
+void Log(char *format, char *file, int line, ...)
 {  
+#ifndef NDEBUG
+  char *fileName = file + strnlen_s(file, MAX_PATH);
+  while (*(fileName - 1) != '\\') fileName--;
+  fprintf_s(stdout, "%s (%d): ", fileName, line);
+#endif
   char message[1024];
   va_list args;
-  va_start(args, format);
+  va_start(args, line);
   if (args != 0) vsnprintf(message, sizeof(message), format, args);  
   va_end(args);
   fprintf_s(stdout, message, args);
 }
 
-void Error(const char *format, ...)
+#define Log(message, ...) Log(message, __FILE__, __LINE__, __VA_ARGS__)
+
+void Error(char *format, ...)
 {  
   LPSTR windowsErrorBuffer = NULL;
   size_t windowsErrorSize = 0;

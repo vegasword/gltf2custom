@@ -78,7 +78,7 @@ void MemTmpBegin(TmpMemory *tmp, Memory *src)
 
 void MemTmpEnd(TmpMemory *tmp, bool free)
 {
-  if (free) memset(tmp->memory->data + tmp->cur, 0, tmp->cur - tmp->prev);
+  if (free) memset(tmp->memory->data + tmp->cur, 0, tmp->memory->cur - tmp->memory->prev);
   tmp->memory->prev = tmp->prev;
   tmp->memory->cur = tmp->cur;
 }
