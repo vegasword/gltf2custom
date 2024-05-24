@@ -102,7 +102,7 @@ int main(int argc, char **argv)
   cgltf_primitive *primitive = &data->meshes->primitives[0];
   cgltf_attribute *attributes = primitive->attributes;
   u64 verticesCount = attributes->data->count;
-  model.verticesSize = model.indicesCount * sizeof(Vertex);
+  model.verticesSize = verticesCount * sizeof(Vertex);
   model.vertices = MemAlloc(&memory, model.verticesSize);
   
   for (u32 i = 0; i < primitive->attributes_count; ++i)
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
       case cgltf_attribute_type_texcoord: {
         u16 *currentBuffer = (u16 *)MemAlloc(&memory, size);
         memcpy(currentBuffer, bufferData + offset, size);
-        for (u32 j = 0; j < verticesCount; j += 2, currentBuffer += 2)
+        for (u32 j = 0; j < verticesCount; ++j, currentBuffer += 2)
         {
           model.vertices[j].u = currentBuffer[0];
           model.vertices[j].v = currentBuffer[1];
