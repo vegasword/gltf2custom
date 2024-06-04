@@ -10,6 +10,8 @@
                       |IndicesCount  : u32       |
                       |IndicesSize   : u32       |
                       |VerticesSize  : u32       |
+                      |uvScale       : f32[2]    |
+                      |uvOffset      : f32[2]    |
                       +--------------------------+
                       |        MODEL DATA        |
                       +--------------------------+
@@ -34,17 +36,19 @@
 #include "linear_alloc.c"
 #include "win32_logger.c"
 
-typedef struct Vertex {
+typedef struct {
   u16 x, y, z;
   s8 nx, ny, nz;
   u16 u, v;
 } Vertex;
 
-typedef struct Model
+typedef struct
 {
   u32 indicesCount;
   u32 indicesSize;
   u32 verticesSize;
+  f32 uvScale[2];
+  f32 uvOffset[2];
   u16 *indices;
   Vertex *vertices;
 } Model;
@@ -84,6 +88,18 @@ int main(int argc, char **argv)
   CheckIf(data->meshes->primitives->attributes->data->count < 65535,
           "The model is too big (more than 65535 vertices)")
   
+  cgltf_material *material = &data->materials[0];
+  if (material != NULL && material->has_pbr_metallic_roughness)
+  {
+    cgltf_texture_transform transform = 
+      material->pbr_metallic_roughness.base_color_texture.transform;
+    
+    model.uvOffset[0] = transform.offset[0];
+    model.uvOffset[1] = transform.offset[1];
+    model.uvScale[0] = transform.scale[0];
+    model.uvScale[1] = transform.scale[1];
+  }
+  
   char *bufferUri = data->buffer_views->buffer->uri;
   HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ,
                                   NULL, OPEN_EXISTING, 0, NULL);
@@ -92,6 +108,7 @@ int main(int argc, char **argv)
   
   CheckIf(ReadFile(bufferFile, bufferData, bufferSize, NULL, NULL),
           "Failed to read file");
+  CloseHandle(bufferFile);
   
   model.indicesCount = data->meshes->primitives->indices->count;
   model.indicesSize = data->meshes->primitives->indices->buffer_view->size;
@@ -152,7 +169,6 @@ int main(int argc, char **argv)
     MemTmpEnd(&tmp, true);
   }
   
-  CloseHandle(bufferFile);
   cgltf_free(data);
 
   HANDLE output = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
@@ -160,12 +176,10 @@ int main(int argc, char **argv)
   
   CheckIf(output != INVALID_HANDLE_VALUE,
           "Failed to write to %s", argv[2]);
-  CheckIf(WriteFile(output, &model.indicesCount, sizeof(u32), 0, NULL),
-    "Failed to write indices count");
-  CheckIf(WriteFile(output, &model.indicesSize, sizeof(u32), 0, NULL),
-    "Failed to write indices size");
-  CheckIf(WriteFile(output, &model.verticesSize, sizeof(u32), 0, NULL),
-    "Failed to write vertices size");
+  CheckIf(WriteFile(output, &model.indicesCount, 3 * sizeof(u32), 0, NULL),
+    "Failed to write indices or vertices metadata in the header");
+  CheckIf(WriteFile(output, &model.uvScale, 4 * sizeof(f32), 0, NULL),
+    "Failed to write texture coordinates metadata in the header");
   CheckIf(WriteFile(output, model.indices, model.indicesSize, 0, NULL),
     "Failed to write indices");
   CheckIf(WriteFile(output, model.vertices, model.verticesSize, 0, NULL),
