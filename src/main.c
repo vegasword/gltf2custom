@@ -9,11 +9,12 @@
                       +--------------------------+
                       |IndicesCount  : u32       |
                       |IndicesSize   : u32       |
+                      |VerticesCount : u32       |
                       |VerticesSize  : u32       |
                       |uvScale       : f32[2]    |
                       |uvOffset      : f32[2]    |
                       +--------------------------+
-                      |        MODEL DATA        |
+                      |       GEOMETRY DATA      |
                       +--------------------------+
                       |Indices       : u16 *     |
                       |Vertices      : Vertex *  |
@@ -44,11 +45,15 @@ typedef struct {
 
 typedef struct
 {
+  // Header
   u32 indicesCount;
   u32 indicesSize;
+  u32 verticesCount;
   u32 verticesSize;
   f32 uvScale[2];
   f32 uvOffset[2];
+
+  // Geometry data
   u16 *indices;
   Vertex *vertices;
 } Model;
@@ -118,8 +123,8 @@ int main(int argc, char **argv)
 
   cgltf_primitive *primitive = &data->meshes->primitives[0];
   cgltf_attribute *attributes = primitive->attributes;
-  u64 verticesCount = attributes->data->count;
-  model.verticesSize = verticesCount * sizeof(Vertex);
+  model.verticesCount = attributes->data->count;
+  model.verticesSize = model.verticesCount * sizeof(Vertex);
   model.vertices = MemAlloc(&memory, model.verticesSize);
   
   for (u32 i = 0; i < primitive->attributes_count; ++i)
@@ -146,7 +151,7 @@ int main(int argc, char **argv)
       case cgltf_attribute_type_normal: {
         s8 *currentBuffer = (s8 *)MemAlloc(&memory, size);
         memcpy(currentBuffer, bufferData + offset, size);
-        for (u32 j = 0; j < verticesCount; ++j, currentBuffer += 4)
+        for (u32 j = 0; j < model.verticesCount; ++j, currentBuffer += 4)
         {
           model.vertices[j].nx = currentBuffer[0];
           model.vertices[j].ny = currentBuffer[1];
@@ -157,7 +162,7 @@ int main(int argc, char **argv)
       case cgltf_attribute_type_texcoord: {
         u16 *currentBuffer = (u16 *)MemAlloc(&memory, size);
         memcpy(currentBuffer, bufferData + offset, size);
-        for (u32 j = 0; j < verticesCount; ++j, currentBuffer += 2)
+        for (u32 j = 0; j < model.verticesCount; ++j, currentBuffer += 2)
         {
           model.vertices[j].u = currentBuffer[0];
           model.vertices[j].v = currentBuffer[1];
@@ -176,10 +181,10 @@ int main(int argc, char **argv)
   
   CheckIf(output != INVALID_HANDLE_VALUE,
           "Failed to write to %s", argv[2]);
-  CheckIf(WriteFile(output, &model.indicesCount, 3 * sizeof(u32), 0, NULL),
+  CheckIf(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL),
     "Failed to write indices or vertices metadata in the header");
   CheckIf(WriteFile(output, &model.uvScale, 4 * sizeof(f32), 0, NULL),
-    "Failed to write texture coordinates metadata in the header");
+    "Failed to write uv metadata in the header");
   CheckIf(WriteFile(output, model.indices, model.indicesSize, 0, NULL),
     "Failed to write indices");
   CheckIf(WriteFile(output, model.vertices, model.verticesSize, 0, NULL),
