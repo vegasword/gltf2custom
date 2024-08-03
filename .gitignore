@@ -12,3 +12,8 @@
 *.glb
 *.bin
 *.png
+
+# npx
+node_modules/
+package-lock.json
+package.json

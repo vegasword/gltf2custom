@@ -34,12 +34,12 @@
 #include "cgltf.h"
 
 #include "typedefs.c"
-#include "linear_alloc.c"
+#include "arena.c"
 #include "win32_logger.c"
 
 typedef struct {
   u16 x, y, z;
-  s8 nx, ny, nz;
+  i8 nx, ny, nz;
   u16 u, v;
 } Vertex;
 
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
       } break;
 
       case cgltf_attribute_type_normal: {
-        s8 *currentBuffer = (s8 *)MemAlloc(&memory, size);
+        i8 *currentBuffer = (i8 *)MemAlloc(&memory, size);
         memcpy(currentBuffer, bufferData + offset, size);
         for (u32 j = 0; j < model.verticesCount; ++j, currentBuffer += 4)
         {

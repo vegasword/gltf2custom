@@ -19,7 +19,7 @@ typedef struct TmpMemory {
   Memory *memory;
 } TmpMemory;
 
-int IsPowerOfTwo(uintptr_t x)
+i32 IsPowerOfTwo(uintptr_t x)
 { 
   return (x & (x - 1)) == 0;
 }
@@ -65,6 +65,13 @@ void MemInit(Memory *memory, void *backBuffer, size_t backBufferLength)
 {
   memory->data = (uc *)backBuffer;
   memory->capacity = backBufferLength;
+  memory->cur = 0;
+  memory->prev = 0;
+}
+
+void MemDestroy(Memory *memory)
+{
+  memset(memory->data, 0, memory->capacity);
   memory->cur = 0;
   memory->prev = 0;
 }
