@@ -9,10 +9,12 @@
                       +--------------------------+
                       |IndicesCount  : u32       |
                       |IndicesSize   : u32       |
-                      |VerticesCount : u32       |
+                      |verticesCount : u32       |
                       |VerticesSize  : u32       |
-                      |uvScale       : f32[2]    |
-                      |uvOffset      : f32[2]    |
+                      |UvScale       : f32[2]    |
+                      |UvOffset      : f32[2]    |
+                      |MinBounding   : u16[3]    |
+                      |MaxBounding   : u16[3]    |
                       +--------------------------+
                       |       GEOMETRY DATA      |
                       +--------------------------+
@@ -52,6 +54,8 @@ typedef struct
   u32 verticesSize;
   f32 uvScale[2];
   f32 uvOffset[2];
+  u16 minBounding[3];
+  u16 maxBounding[3];
 
   // Geometry data
   u16 *indices;
@@ -64,14 +68,6 @@ int main(int argc, char **argv)
     Log("Usage: gltf2custom [input: *.gltf/glb] [output]");
     return 1;
   }
-
-  LARGE_INTEGER freq, c1;
-  QueryPerformanceFrequency(&freq);
-  QueryPerformanceCounter(&c1);
-  
-  Model model = {0};
-  char *inputPath = argv[1];
-  char *outputPath = argv[2];
   
   Memory memory = {0};
   MemInit(
@@ -80,10 +76,23 @@ int main(int argc, char **argv)
     4*GB
   );
 
-  cgltf_options options = {0};
+  LARGE_INTEGER freq, c1;
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&c1);
+
+  /*
+  -- Input parsing and validations
+  */
+  
+  Model model = {0};
+  char *inputPath = argv[1], *outputPath = argv[2];
+  cgltf_options options = {0};  
   cgltf_data* data = NULL;
   CheckIf(cgltf_parse_file(&options, inputPath, &data) == cgltf_result_success, 
     "Failed to parse %s", argv[1]);
+  
+  CheckIf(strncmp(data->asset.generator, "gltfpack", 8) == 0,
+          "The model should be optimized using gltfpack (https://www.npmjs.com/package/gltfpack)")
   CheckIf(data->meshes_count == 1,
           "The model must be a single mesh")
   CheckIf(data->meshes->primitives_count == 1,
@@ -92,6 +101,14 @@ int main(int argc, char **argv)
           "The model must be triangulated and rendered as is (strip and fan modes not supported)")
   CheckIf(data->meshes->primitives->attributes->data->count < 65535,
           "The model is too big (more than 65535 vertices)")
+  CheckIf(data->accessors_count > 0,
+          "The model doesn't contains any accessors (required to get its boundaries)")
+  CheckIf(data->accessors->has_min && data->accessors->has_max,
+          "The model doesn't have boundaries")
+  
+  /*
+  -- Textures transform
+  */
   
   cgltf_material *material = &data->materials[0];
   if (material != NULL && material->has_pbr_metallic_roughness)
@@ -99,11 +116,20 @@ int main(int argc, char **argv)
     cgltf_texture_transform transform = 
       material->pbr_metallic_roughness.base_color_texture.transform;
     
-    model.uvOffset[0] = transform.offset[0];
-    model.uvOffset[1] = transform.offset[1];
-    model.uvScale[0] = transform.scale[0];
-    model.uvScale[1] = transform.scale[1];
+    memcpy(model.uvOffset, transform.offset, 2 * sizeof(f32));
+    memcpy(model.uvScale, transform.scale, 2 * sizeof(f32));
   }
+
+  /*
+  -- Boundaries
+  */
+  
+  for (u8 i = 0; i < 3; ++i) model.minBounding[i] = (u16)data->accessors->min[i];
+  for (u8 i = 0; i < 3; ++i) model.maxBounding[i] = (u16)data->accessors->max[i];
+  
+  /*
+  -- Reading buffer file
+  */
   
   char *bufferUri = data->buffer_views->buffer->uri;
   HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ,
@@ -115,12 +141,20 @@ int main(int argc, char **argv)
           "Failed to read file");
   CloseHandle(bufferFile);
   
+  /*
+  -- Indices
+  */
+  
   model.indicesCount = data->meshes->primitives->indices->count;
   model.indicesSize = data->meshes->primitives->indices->buffer_view->size;
   u32 indicesOffset = data->meshes->primitives->indices->buffer_view->offset;
   model.indices = MemAlloc(&memory, model.indicesSize);
   memcpy(model.indices, bufferData + indicesOffset, model.indicesSize);      
 
+  /*
+  -- Vertices
+  */
+  
   cgltf_primitive *primitive = &data->meshes->primitives[0];
   cgltf_attribute *attributes = primitive->attributes;
   model.verticesCount = attributes->data->count;
@@ -176,6 +210,10 @@ int main(int argc, char **argv)
   
   cgltf_free(data);
 
+  /*
+  -- Writting to output
+  */
+  
   HANDLE output = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                              0, NULL);
   
@@ -183,8 +221,10 @@ int main(int argc, char **argv)
           "Failed to write to %s", argv[2]);
   CheckIf(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL),
     "Failed to write indices or vertices metadata in the header");
-  CheckIf(WriteFile(output, &model.uvScale, 4 * sizeof(f32), 0, NULL),
+  CheckIf(WriteFile(output, model.uvScale, 4 * sizeof(f32), 0, NULL),
     "Failed to write uv metadata in the header");
+  CheckIf(WriteFile(output, model.minBounding, 6 * sizeof(u16), 0, NULL),
+    "Failed to write boundaries in the header");
   CheckIf(WriteFile(output, model.indices, model.indicesSize, 0, NULL),
     "Failed to write indices");
   CheckIf(WriteFile(output, model.vertices, model.verticesSize, 0, NULL),
