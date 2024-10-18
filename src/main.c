@@ -39,9 +39,9 @@
 #include "arena.c"
 #include "win32_logger.c"
 
-typedef struct {
-  u16 x, y, z;
-  i8 nx, ny, nz;
+typedef __declspec(align(16)) struct {
+  u16 x, y, z, _offset0;
+  i8 nx, ny, nz, _offset1;
   u16 u, v;
 } Vertex;
 
@@ -80,9 +80,7 @@ int main(int argc, char **argv)
   QueryPerformanceFrequency(&freq);
   QueryPerformanceCounter(&c1);
 
-  /*
-  -- Input parsing and validations
-  */
+  // Input parsing and validations
   
   Model model = {0};
   char *inputPath = argv[1], *outputPath = argv[2];
@@ -106,9 +104,7 @@ int main(int argc, char **argv)
   CheckIf(data->accessors->has_min && data->accessors->has_max,
           "The model doesn't have boundaries")
   
-  /*
-  -- Textures transform
-  */
+  // Textures transform
   
   cgltf_material *material = &data->materials[0];
   if (material != NULL && material->has_pbr_metallic_roughness)
@@ -120,16 +116,12 @@ int main(int argc, char **argv)
     memcpy(model.uvScale, transform.scale, 2 * sizeof(f32));
   }
 
-  /*
-  -- Boundaries
-  */
+  // Boundaries
   
   for (u8 i = 0; i < 3; ++i) model.minBounding[i] = (u16)data->accessors->min[i];
   for (u8 i = 0; i < 3; ++i) model.maxBounding[i] = (u16)data->accessors->max[i];
   
-  /*
-  -- Reading buffer file
-  */
+  // Reading buffer file
   
   char *bufferUri = data->buffer_views->buffer->uri;
   HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ,
@@ -141,9 +133,7 @@ int main(int argc, char **argv)
           "Failed to read file");
   CloseHandle(bufferFile);
   
-  /*
-  -- Indices
-  */
+  // Indices
   
   model.indicesCount = data->meshes->primitives->indices->count;
   model.indicesSize = data->meshes->primitives->indices->buffer_view->size;
@@ -151,9 +141,7 @@ int main(int argc, char **argv)
   model.indices = MemAlloc(&memory, model.indicesSize);
   memcpy(model.indices, bufferData + indicesOffset, model.indicesSize);      
 
-  /*
-  -- Vertices
-  */
+  // Vertices
   
   cgltf_primitive *primitive = &data->meshes->primitives[0];
   cgltf_attribute *attributes = primitive->attributes;
@@ -205,14 +193,12 @@ int main(int argc, char **argv)
 
       default: break;
     }  
-    MemTmpEnd(&tmp, true);
+    MemTmpEnd(&tmp);
   }
   
   cgltf_free(data);
 
-  /*
-  -- Writting to output
-  */
+  // Writting to output
   
   HANDLE output = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                              0, NULL);
