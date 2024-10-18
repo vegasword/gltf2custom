@@ -83,9 +83,9 @@ void MemTmpBegin(TmpMemory *tmp, Memory *src)
   tmp->cur = src->cur;
 }
 
-void MemTmpEnd(TmpMemory *tmp, bool free)
+void MemTmpEnd(TmpMemory *tmp)
 {
-  if (free) memset(tmp->memory->data + tmp->cur, 0, tmp->memory->cur - tmp->memory->prev);
+  memset(tmp->memory->data + tmp->cur, 0, tmp->memory->cur - tmp->cur);
   tmp->memory->prev = tmp->prev;
   tmp->memory->cur = tmp->cur;
 }
