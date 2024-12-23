@@ -47,7 +47,6 @@ typedef __declspec(align(16)) struct {
 
 typedef struct
 {
-  // Header
   u32 indicesCount;
   u32 indicesSize;
   u32 verticesCount;
@@ -56,8 +55,6 @@ typedef struct
   f32 uvOffset[2];
   u16 minBounding[3];
   u16 maxBounding[3];
-
-  // Geometry data
   u16 *indices;
   Vertex *vertices;
 } Model;
@@ -70,11 +67,7 @@ int main(int argc, char **argv)
   }
   
   Memory memory = {0};
-  MemInit(
-    &memory, 
-    VirtualAlloc(NULL, 1*GB, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE),
-    4*GB
-  );
+  MemInit(&memory, VirtualAlloc(NULL, 3*GB, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), 3*GB);
 
   LARGE_INTEGER freq, c1;
   QueryPerformanceFrequency(&freq);
@@ -86,23 +79,14 @@ int main(int argc, char **argv)
   char *inputPath = argv[1], *outputPath = argv[2];
   cgltf_options options = {0};  
   cgltf_data* data = NULL;
-  CheckIf(cgltf_parse_file(&options, inputPath, &data) == cgltf_result_success, 
-    "Failed to parse %s", argv[1]);
-  
-  CheckIf(strncmp(data->asset.generator, "gltfpack", 8) == 0,
-          "The model should be optimized using gltfpack (https://www.npmjs.com/package/gltfpack)")
-  CheckIf(data->meshes_count == 1,
-          "The model must be a single mesh")
-  CheckIf(data->meshes->primitives_count == 1,
-          "The model's primitives must be merged to a single mesh")
-  CheckIf(data->meshes->primitives->type == cgltf_primitive_type_triangles,
-          "The model must be triangulated and rendered as is (strip and fan modes not supported)")
-  CheckIf(data->meshes->primitives->attributes->data->count < 65535,
-          "The model is too big (more than 65535 vertices)")
-  CheckIf(data->accessors_count > 0,
-          "The model doesn't contains any accessors (required to get its boundaries)")
-  CheckIf(data->accessors->has_min && data->accessors->has_max,
-          "The model doesn't have boundaries")
+  CheckIf(cgltf_parse_file(&options, inputPath, &data) == cgltf_result_success,  "Failed to parse %s", argv[1]);
+  CheckIf(strncmp(data->asset.generator, "gltfpack", 8) == 0, "The model should be optimized using gltfpack (https://www.npmjs.com/package/gltfpack)")
+  CheckIf(data->meshes_count == 1, "The model must be a single mesh")
+  CheckIf(data->meshes->primitives_count == 1, "The model's primitives must be merged to a single mesh")
+  CheckIf(data->meshes->primitives->type == cgltf_primitive_type_triangles, "The model must be triangulated and rendered as is (strip and fan modes not supported)")
+  CheckIf(data->meshes->primitives->attributes->data->count < 65535, "The model is too big (more than 65535 vertices)")
+  CheckIf(data->accessors_count > 0, "The model doesn't contains any accessors (required to get its boundaries)")
+  CheckIf(data->accessors->has_min && data->accessors->has_max, "The model doesn't have boundaries")
   
   // Textures transform
   
@@ -116,7 +100,7 @@ int main(int argc, char **argv)
     memcpy(model.uvScale, transform.scale, 2 * sizeof(f32));
   }
 
-  // Boundaries
+  // Boundings
   
   for (u8 i = 0; i < 3; ++i) model.minBounding[i] = (u16)data->accessors->min[i];
   for (u8 i = 0; i < 3; ++i) model.maxBounding[i] = (u16)data->accessors->max[i];
@@ -124,13 +108,10 @@ int main(int argc, char **argv)
   // Reading buffer file
   
   char *bufferUri = data->buffer_views->buffer->uri;
-  HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ,
-                                  NULL, OPEN_EXISTING, 0, NULL);
+  HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
   u64 bufferSize = data->buffers->size;
   signed char *bufferData = MemAlloc(&memory, bufferSize);
-  
-  CheckIf(ReadFile(bufferFile, bufferData, bufferSize, NULL, NULL),
-          "Failed to read file");
+  CheckIf(ReadFile(bufferFile, bufferData, bufferSize, NULL, NULL), "Failed to read file");
   CloseHandle(bufferFile);
   
   // Indices
@@ -200,21 +181,14 @@ int main(int argc, char **argv)
 
   // Writting to output
   
-  HANDLE output = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                             0, NULL);
+  HANDLE output = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
   
-  CheckIf(output != INVALID_HANDLE_VALUE,
-          "Failed to write to %s", argv[2]);
-  CheckIf(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL),
-    "Failed to write indices or vertices metadata in the header");
-  CheckIf(WriteFile(output, model.uvScale, 4 * sizeof(f32), 0, NULL),
-    "Failed to write uv metadata in the header");
-  CheckIf(WriteFile(output, model.minBounding, 6 * sizeof(u16), 0, NULL),
-    "Failed to write boundaries in the header");
-  CheckIf(WriteFile(output, model.indices, model.indicesSize, 0, NULL),
-    "Failed to write indices");
-  CheckIf(WriteFile(output, model.vertices, model.verticesSize, 0, NULL),
-    "Failed to write vertices");
+  CheckIf(output != INVALID_HANDLE_VALUE, "Failed to write to %s", argv[2]);
+  CheckIf(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL), "Failed to write indices or vertices metadata in the header");
+  CheckIf(WriteFile(output, model.uvScale, 4 * sizeof(f32), 0, NULL), "Failed to write uv metadata in the header");
+  CheckIf(WriteFile(output, model.minBounding, 6 * sizeof(u16), 0, NULL), "Failed to write boundaries in the header");
+  CheckIf(WriteFile(output, model.indices, model.indicesSize, 0, NULL), "Failed to write indices");
+  CheckIf(WriteFile(output, model.vertices, model.verticesSize, 0, NULL), "Failed to write vertices");
 
   LARGE_INTEGER c2;
   QueryPerformanceCounter(&c2);
