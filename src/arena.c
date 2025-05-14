@@ -6,18 +6,18 @@
 #define DEFAULT_ALIGNMENT (2 * sizeof(void *))
 #endif
 
-typedef struct Memory {
+typedef struct Arena {
   size_t cur;
   size_t prev;
   size_t capacity;
   uc *data;
-} Memory;
+} Arena;
 
-typedef struct TmpMemory {
+typedef struct TmpArena {
   size_t prev;
   size_t cur;
-  Memory *memory;
-} TmpMemory;
+  Arena *arena;
+} TmpArena;
 
 i32 IsPowerOfTwo(uintptr_t x)
 { 
@@ -31,22 +31,21 @@ uintptr_t AlignForward(uintptr_t ptr, size_t align)
   p = ptr;
   a = (uintptr_t)align;
   modulo = p & (a - 1);
-  if (modulo != 0)
-    p += a - modulo;
+  if (modulo != 0) p += a - modulo;
   return p;
 }
 
-void *MemAllocAlign(Memory *memory, size_t size, size_t align)
+void *AllocAlign(Arena *arena, size_t size, size_t align)
 {
-  uintptr_t curr_ptr = (uintptr_t)memory->data + (uintptr_t)memory->cur;
+  uintptr_t curr_ptr = (uintptr_t)arena->data + (uintptr_t)arena->cur;
   uintptr_t offset = AlignForward(curr_ptr, align);
-  offset -= (uintptr_t)memory->data;
+  offset -= (uintptr_t)arena->data;
 
-  if (offset + size <= memory->capacity)
+  if (offset + size <= arena->capacity)
   {
-    void *ptr = &memory->data[offset];
-    memory->prev = offset;
-    memory->cur = offset + size;
+    void *ptr = &arena->data[offset];
+    arena->prev = offset;
+    arena->cur = offset + size;
     memset(ptr, 0, size);
     return ptr;
   }
@@ -56,36 +55,37 @@ void *MemAllocAlign(Memory *memory, size_t size, size_t align)
   }
 }
 
-void *MemAlloc(Memory *memory, size_t size) 
+void *Alloc(Arena *arena, size_t size) 
 {
-  return MemAllocAlign(memory, size, DEFAULT_ALIGNMENT);
+  return AllocAlign(arena, size, DEFAULT_ALIGNMENT);
 }
 
-void MemInit(Memory *memory, void *backBuffer, size_t backBufferLength)
+#define New(arena, type) (type *)Alloc(arena, sizeof(type))
+
+void InitArena(Arena *arena, void *backBuffer, size_t backBufferLength)
 {
-  memory->data = (uc *)backBuffer;
-  memory->capacity = backBufferLength;
-  memory->cur = 0;
-  memory->prev = 0;
+  arena->data = (uc *)backBuffer;
+  arena->capacity = backBufferLength;
+  arena->cur = 0;
+  arena->prev = 0;
 }
 
-void MemDestroy(Memory *memory)
+void Destroy(Arena *arena)
 {
-  memset(memory->data, 0, memory->capacity);
-  memory->cur = 0;
-  memory->prev = 0;
+  memset(arena->data, 0, arena->capacity);
+  arena->cur = 0;
+  arena->prev = 0;
 }
 
-void MemTmpBegin(TmpMemory *tmp, Memory *src)
+void TmpBegin(TmpArena *tmp, Arena *src)
 {
-  tmp->memory = src;
+  tmp->arena = src;
   tmp->prev = src->prev;
   tmp->cur = src->cur;
 }
 
-void MemTmpEnd(TmpMemory *tmp)
+void TmpEnd(TmpArena *tmp)
 {
-  memset(tmp->memory->data + tmp->cur, 0, tmp->memory->cur - tmp->cur);
-  tmp->memory->prev = tmp->prev;
-  tmp->memory->cur = tmp->cur;
+  tmp->arena->prev = tmp->prev;
+  tmp->arena->cur = tmp->cur;
 }
