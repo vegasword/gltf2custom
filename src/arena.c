@@ -1,3 +1,23 @@
+/*
+  Copyright (c) 2025 Alexandre Perché (@vegasword)
+
+  This software is provided 'as-is', without any express or implied
+  warranty. In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+*/
+
 #define KB 1024LL
 #define MB KB*1000
 #define GB MB*1000
@@ -55,12 +75,7 @@ void *AllocAlign(Arena *arena, size_t size, size_t align)
   }
 }
 
-void *Alloc(Arena *arena, size_t size) 
-{
-  return AllocAlign(arena, size, DEFAULT_ALIGNMENT);
-}
-
-#define New(arena, type) (type *)Alloc(arena, sizeof(type))
+#define Alloc(arena, size) AllocAlign(arena, size, DEFAULT_ALIGNMENT)
 
 void InitArena(Arena *arena, void *backBuffer, size_t backBufferLength)
 {
