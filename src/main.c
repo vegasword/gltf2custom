@@ -1,3 +1,5 @@
+//BUG: Models vertices that aren't exported from blender are fucked idk why
+
 #include "stdio.h"
 #include "stdint.h"
 #include "assert.h"
@@ -15,14 +17,19 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-typedef __declspec(align(16)) struct {
+typedef __declspec(align(16)) struct Vertex {
   u16 x, y, z, pad0;
   i8 nx, ny, nz, pad1;
   u16 u, v;
 } Vertex;
 
-typedef struct
-{
+typedef struct MetallicRoughnessMaterial {
+  f32 baseColorFactor[4];
+  f32 metallicFactor;
+  f32 roughnessFactor;
+} MetallicRoughnessMaterial;
+
+typedef struct Model {
   u32 indicesCount;
   u32 indicesSize;
   u32 verticesCount;
@@ -31,6 +38,7 @@ typedef struct
   f32 uvOffset[2];
   u16 minBoundary[3];
   u16 maxBoundary[3];
+  MetallicRoughnessMaterial material;
   u16 *indices;
   Vertex *vertices;
 } Model;
@@ -45,7 +53,7 @@ i32 main(i32 argc, char **argv)
   Arena arena = {0};
   InitArena(&arena, VirtualAlloc(NULL, 1*GB, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), 1*GB);
 
-  // Parsing and validation
+  // glTF parsing and validation
   
   Model model = {0};
   char *inputPath = argv[1], *outputPath = argv[2];
@@ -64,14 +72,30 @@ i32 main(i32 argc, char **argv)
   
   CHECK(primitive->type == cgltf_primitive_type_triangles, "Model must be triangulated")
   
-  // Textures transform
+  // Fetching metallic-roughness material
+  // NOTE: For now I support only one material
   
-  cgltf_material *material = &data->materials[0];
+  cgltf_material *material = data->materials;
   CHECK(material && material->has_pbr_metallic_roughness, "Model must have a metallic roughness PBR material");
   
+  cgltf_pbr_metallic_roughness pbrMetallicRoughness = material->pbr_metallic_roughness;
+  
+  model.material.baseColorFactor[0] = pbrMetallicRoughness.base_color_factor[0];
+  model.material.baseColorFactor[1] = pbrMetallicRoughness.base_color_factor[1];
+  model.material.baseColorFactor[2] = pbrMetallicRoughness.base_color_factor[2];
+  model.material.baseColorFactor[3] = pbrMetallicRoughness.base_color_factor[3];
+  
+  model.material.metallicFactor = pbrMetallicRoughness.metallic_factor;
+  model.material.roughnessFactor = pbrMetallicRoughness.roughness_factor;
+  
+  // Fetching texture transform
+  
   cgltf_texture_transform transform = material->pbr_metallic_roughness.base_color_texture.transform;
-  memcpy(model.uvOffset, transform.offset, 2 * sizeof(f32));
-  memcpy(model.uvScale, transform.scale, 2 * sizeof(f32));
+  
+  model.uvOffset[0] = transform.offset[0];
+  model.uvOffset[1] = transform.offset[1];
+  model.uvScale[0] = transform.scale[0];
+  model.uvScale[1] = transform.scale[1];  
   
   // Reading buffer file (usually *.bin)
   
@@ -209,6 +233,7 @@ i32 main(i32 argc, char **argv)
   CHECK(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL), "Failed to write indices or vertices metadata in the header");
   CHECK(WriteFile(output, model.uvScale, 4 * sizeof(f32), 0, NULL), "Failed to write uv metadata in the header");
   CHECK(WriteFile(output, model.minBoundary, 6 * sizeof(u16), 0, NULL), "Failed to write boundaries in the header");
+  CHECK(WriteFile(output, &model.material.baseColorFactor[0], 6 * sizeof(f32), 0, NULL), "Failed to write metallic-roughness material");
   CHECK(WriteFile(output, model.indices, model.indicesSize, 0, NULL), "Failed to write indices");
   CHECK(WriteFile(output, model.vertices, model.verticesSize, 0, NULL), "Failed to write vertices");
     
