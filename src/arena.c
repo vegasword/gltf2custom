@@ -76,6 +76,7 @@ void *AllocAlign(Arena *arena, size_t size, size_t align)
 }
 
 #define Alloc(arena, size) AllocAlign(arena, size, DEFAULT_ALIGNMENT)
+#define New(arena, type) (type *)Alloc(arena, sizeof(type))
 
 void InitArena(Arena *arena, void *backBuffer, size_t backBufferLength)
 {

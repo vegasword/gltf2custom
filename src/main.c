@@ -16,11 +16,13 @@
   2. Altered source versions must be plainly marked as such, and must not be
      misrepresented as being the original software.
   3. This notice may not be removed or altered from any source distribution.  
-*/
 
-/*
-  TODO: Use meshopt C API direct for further optimizations
-  BUG: Only models vertices exported from blender works somehow
+  BUG:
+    - Only vertices exported from blender works somehow
+    
+  TODO:
+    - Use meshopt lib for custom vertex optimization
+    - Generate tangents if not specified in the parsed glTF, using MikkTSpace (http://www.mikktspace.com/)    
 */
 
 #include "stdio.h"
@@ -40,17 +42,12 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-typedef __declspec(align(16)) struct Vertex {
-  u16 x, y, z, pad0;
-  i8 nx, ny, nz, pad1;
+typedef struct Vertex {
+  u16 x, y, z;
+  i8 nx, ny, nz;
+  i8 tx, ty, tz, handedness;
   u16 u, v;
 } Vertex;
-
-typedef struct MetallicRoughnessMaterial {
-  f32 baseColorFactor[4];
-  f32 metallicFactor;
-  f32 roughnessFactor;
-} MetallicRoughnessMaterial;
 
 typedef struct Model {
   u32 indicesCount;
@@ -59,9 +56,11 @@ typedef struct Model {
   u32 verticesSize;
   f32 uvScale[2];
   f32 uvOffset[2];
+  f32 baseColorFactor[4];
+  f32 metallicFactor;
+  f32 roughnessFactor;
   u16 minBoundary[3];
   u16 maxBoundary[3];
-  MetallicRoughnessMaterial material;
   u16 *indices;
   Vertex *vertices;
 } Model;
@@ -95,21 +94,33 @@ i32 main(i32 argc, char **argv)
   
   CHECK(primitive->type == cgltf_primitive_type_triangles, "Model must be triangulated")
   
+  // Reading buffer file
+  
+  char *bufferUri = data->buffer_views->buffer->uri;
+  
+  HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+  DWORD bytesRead;
+  
+  cgltf_size bufferSize = data->buffers->size;
+  uc *bufferData = (uc *)Alloc(&arena, bufferSize);
+  
+  CHECK(ReadFile(bufferFile, bufferData, (DWORD)bufferSize, &bytesRead, NULL) && bufferSize == bytesRead, "Failed to read file");
+  CloseHandle(bufferFile);
+  
   // Fetching metallic-roughness material
-  // NOTE: For now I support only one material
   
   cgltf_material *material = data->materials;
   CHECK(material && material->has_pbr_metallic_roughness, "Model must have a metallic roughness PBR material");
   
   cgltf_pbr_metallic_roughness pbrMetallicRoughness = material->pbr_metallic_roughness;
   
-  model.material.baseColorFactor[0] = pbrMetallicRoughness.base_color_factor[0];
-  model.material.baseColorFactor[1] = pbrMetallicRoughness.base_color_factor[1];
-  model.material.baseColorFactor[2] = pbrMetallicRoughness.base_color_factor[2];
-  model.material.baseColorFactor[3] = pbrMetallicRoughness.base_color_factor[3];
+  model.baseColorFactor[0] = pbrMetallicRoughness.base_color_factor[0];
+  model.baseColorFactor[1] = pbrMetallicRoughness.base_color_factor[1];
+  model.baseColorFactor[2] = pbrMetallicRoughness.base_color_factor[2];
+  model.baseColorFactor[3] = pbrMetallicRoughness.base_color_factor[3];
   
-  model.material.metallicFactor = pbrMetallicRoughness.metallic_factor;
-  model.material.roughnessFactor = pbrMetallicRoughness.roughness_factor;
+  model.metallicFactor = pbrMetallicRoughness.metallic_factor;
+  model.roughnessFactor = pbrMetallicRoughness.roughness_factor;
   
   // Fetching texture transform
   
@@ -119,17 +130,7 @@ i32 main(i32 argc, char **argv)
   model.uvOffset[1] = transform.offset[1];
   model.uvScale[0] = transform.scale[0];
   model.uvScale[1] = transform.scale[1];  
-  
-  // Reading buffer file (usually *.bin)
-  
-  char *bufferUri = data->buffer_views->buffer->uri;
-  HANDLE bufferFile = CreateFileA(bufferUri, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-  cgltf_size bufferSize = data->buffers->size;
-  uc *bufferData = (uc *)Alloc(&arena, bufferSize);
-  
-  CHECK(ReadFile(bufferFile, bufferData, (DWORD)bufferSize, NULL, NULL), "Failed to read file");
-  CloseHandle(bufferFile);
-  
+    
   // Fetching indices
 
   cgltf_accessor *indices = primitive->indices;
@@ -160,9 +161,9 @@ i32 main(i32 argc, char **argv)
     
     switch (attribute.type)
     {          
-      case cgltf_attribute_type_position: {    
+      case cgltf_attribute_type_position: {
           
-        CHECK(stride, "Invalid stride for fetching vertices positions");
+        CHECK(stride, "Null stride on fetching vertices positions");
           
         if (accessors->has_min && data->accessors->has_max)
         {
@@ -215,7 +216,7 @@ i32 main(i32 argc, char **argv)
 
       case cgltf_attribute_type_normal: {
           
-        CHECK(stride, "Invalid stride for fetching vertices normals");
+        CHECK(stride, "Null stride on fetching vertices normals");
         
         for (u32 j = 0; j < model.verticesCount; ++j)
         {          
@@ -228,9 +229,25 @@ i32 main(i32 argc, char **argv)
         
       } break;
       
+      case cgltf_attribute_type_tangent: {
+          
+        CHECK(stride, "Null stride on fetching vertices tangents");
+        
+        for (u32 j = 0; j < model.verticesCount; ++j)
+        {          
+          i8 *tangent = (i8 *)((uc *)pBuffer + j * stride);
+          Vertex *vertex = &model.vertices[j];
+          vertex->tx = tangent[0];
+          vertex->ty = tangent[1];
+          vertex->tz = tangent[2];
+          vertex->handedness = tangent[3];
+        }
+        
+      } break;
+      
       case cgltf_attribute_type_texcoord: {
           
-        CHECK(stride, "Invalid stride for fetching vertices texcoords");
+        CHECK(stride, "Null stride on fetching vertices texcoords");
         
         for (u32 j = 0; j < model.verticesCount; ++j)
         {
@@ -254,9 +271,8 @@ i32 main(i32 argc, char **argv)
   
   CHECK(output != INVALID_HANDLE_VALUE, "Failed to write to %s", argv[2]);
   CHECK(WriteFile(output, &model.indicesCount, 4 * sizeof(u32), 0, NULL), "Failed to write indices or vertices metadata in the header");
-  CHECK(WriteFile(output, model.uvScale, 4 * sizeof(f32), 0, NULL), "Failed to write uv metadata in the header");
+  CHECK(WriteFile(output, model.uvScale, 10 * sizeof(f32), 0, NULL), "Failed to write material data in the header");
   CHECK(WriteFile(output, model.minBoundary, 6 * sizeof(u16), 0, NULL), "Failed to write boundaries in the header");
-  CHECK(WriteFile(output, &model.material.baseColorFactor[0], 6 * sizeof(f32), 0, NULL), "Failed to write metallic-roughness material");
   CHECK(WriteFile(output, model.indices, model.indicesSize, 0, NULL), "Failed to write indices");
   CHECK(WriteFile(output, model.vertices, model.verticesSize, 0, NULL), "Failed to write vertices");
     
